@@ -1,4 +1,3 @@
-import {randomBytes} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 
@@ -13,7 +12,7 @@ export function prepareAdminSettings(db,data){
       let invite;
       try{invite=readFileSync(join(data,'family-invite.txt'),'utf8').trim()}
       catch(error){if(error.code!=='ENOENT')throw error}
-      db.prepare('INSERT INTO family_settings VALUES(1,?)').run(invite || randomBytes(12).toString('base64url'));
+      db.prepare('INSERT INTO family_settings VALUES(1,?)').run(invite || '12345678');
     }
     db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error}
