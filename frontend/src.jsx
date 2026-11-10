@@ -1,3 +1,4 @@
+import {checkMessageResponse} from './message-response.mjs';
 import ChangePassword from './ChangePassword';
 import HostAddress from './HostAddress';
 import React,{useState,useEffect,useRef,useLayoutEffect} from 'react';
@@ -81,7 +82,7 @@ function App({user,logout,expired}){
     try{
       const r=await fetch('/api/messages',{method:'POST',body});
       if(r.status===401){expired();return}
-      if(!r.ok)throw Error((await r.json()).error);
+      await checkMessageResponse(r);
       setDraft('');setFile(null);bottom.current=true;await refresh.current();
     }catch(e){setError(e.message==='Failed to fetch'?'发送失败，请检查网络后重试':e.message)}
     finally{setSending(false)}
