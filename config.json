@@ -1,0 +1,5 @@
+{
+  "frontendPort": 7070,
+  "backendPort": 7071,
+  "adminUsers": ["MacBookProM2Pro"]
+}

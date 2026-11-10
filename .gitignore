@@ -1,0 +1,13 @@
+# Node dependencies and frontend build output
+node_modules/
+/frontend/dist/
+
+# Local accounts, sessions, chat history, and uploaded media
+/backend/data/
+
+# Local environment and development files
+.env
+.env.*
+!.env.example
+npm-debug.log*
+.DS_Store
