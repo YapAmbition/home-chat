@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Files,Image,Film} from 'lucide-react';
+import {Files,Image,Film,File} from 'lucide-react';
 
 const clock=new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',dateStyle:'short',timeStyle:'short'});
 function size(bytes){
@@ -64,7 +64,7 @@ export default function FileManager({expired}){
       <div className="file-summary"><div><strong>{query.from?query.from+' 至 '+query.to:'全部日期'}</strong><small>{data.count} 个附件 · {size(data.bytes)}</small></div>
         {query.from&&data.count>0&&<button className="danger" disabled={from!==query.from||to!==query.to} onClick={()=>dialog.current.showModal()}>清理此日期范围</button>}</div>
       {data.files.length===0?<p>没有找到附件。</p>:<ul className="file-list">{data.files.map(file=><li key={file.id}>
-        {file.mime?.startsWith('video/')?<Film size={20}/>:<Image size={20}/>}
+        {file.mime?.startsWith('video/')?<Film size={20}/>:file.mime?.startsWith('image/')?<Image size={20}/>:<File size={20}/>}
         <div><a href={'/media/'+file.file} target="_blank" rel="noreferrer">{file.filename||'查看附件'}</a>
         <small>{file.name} · {clock.format(file.time)} · {size(file.bytes)}</small></div>
       </li>)}</ul>}

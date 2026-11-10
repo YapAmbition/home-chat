@@ -70,7 +70,7 @@ app.get('/api/messages',(req,res)=>{
   const rows=db.prepare("SELECT * FROM messages WHERE id < ? AND (? = 'all' OR mime LIKE ?) ORDER BY id DESC LIMIT 80").all(before,kind,kind+'/%');
   res.json(rows.reverse());
 });
-const upload=multer({dest:uploads,limits:{fileSize:128*1024*1024,fields:3,files:1,fieldSize:32000}});
+const upload=multer({dest:uploads,limits:{fields:3,files:1,fieldSize:32000}});
 function mediaType(path){
   const fd=openSync(path,'r'), b=Buffer.alloc(32);
   try{readSync(fd,b,0,b.length,0)}finally{closeSync(fd)}
@@ -92,9 +92,8 @@ app.post('/api/messages',upload.single('media'),(req,res)=>{
   try{
     const {text=''}=req.body || {};
     const {id,name}=req.account;
-    const mime=req.file && mediaType(req.file.path);
+    const mime=req.file ? (mediaType(req.file.path) || 'application/octet-stream') : null;
     if(typeof text!=='string'||text.length>4000||(!text.trim()&&!req.file)) return res.status(400).json({error:'请检查设备名称或消息内容'});
-    if(req.file&&!mime) return res.status(415).json({error:'请选择 JPG、PNG、GIF、WebP、AVIF、MP4、MOV 或 WebM 文件'});
     const result=db.prepare('INSERT INTO messages(device,name,text,file,mime,filename,time,bytes) VALUES(?,?,?,?,?,?,?,?)').run("account:"+id,name,text.trim(),req.file?.filename || null,mime || null,req.file ? Buffer.from(req.file.originalname,'latin1').toString('utf8') : null,Date.now(),req.file?.size??null);
     committed=true;
     signal('message',Number(result.lastInsertRowid));
@@ -102,14 +101,18 @@ app.post('/api/messages',upload.single('media'),(req,res)=>{
   }finally{if(req.file&&!committed) unlinkSync(req.file.path)}
 });
 app.get('/media/:file',(req,res)=>{
-  const item=db.prepare('SELECT mime FROM messages WHERE file=?').get(req.params.file);
+  const item=db.prepare('SELECT mime,filename FROM messages WHERE file=?').get(req.params.file);
   if(!item) return res.sendStatus(404);
   res.set({'Content-Type':item.mime,'X-Content-Type-Options':'nosniff'});
-  res.sendFile(join(uploads,req.params.file));
+  const path=join(uploads,req.params.file);
+  if(item.mime==='application/octet-stream'){
+    return res.download(path,item.filename || '附件');
+  }
+  res.sendFile(path);
 });
 app.use((err,req,res,next)=>{
   if(res.headersSent) return next(err);
-  res.status(err instanceof multer.MulterError ? 400:500).json({error:err.code==='LIMIT_FILE_SIZE'?'单个附件最大为 128 MB':'操作失败，请重试'});
+  res.status(err instanceof multer.MulterError ? 400:500).json({error:err.code==='ENOSPC'?'服务器磁盘空间不足':'操作失败，请重试'});
 });
 app.listen(backendPort,'0.0.0.0',error=>{
   if(error) throw error;

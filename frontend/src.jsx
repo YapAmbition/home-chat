@@ -1,7 +1,8 @@
+import ChangePassword from './ChangePassword';
 import HostAddress from './HostAddress';
 import React,{useState,useEffect,useRef,useLayoutEffect} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Mail,Send,Images,Film,Monitor,Leaf,LogOut,Menu,X,ImagePlus,Video,Radio,ChevronRight,MessageCircle,Users,Stamp,Settings} from 'lucide-react';
+import {Mail,Send,Images,Film,Monitor,Leaf,LogOut,Menu,X,ImagePlus,Video,Radio,ChevronRight,MessageCircle,Users,Stamp,Settings,Paperclip,Download} from 'lucide-react';
 import AdminPage from './AdminPage';
 import AccountGate from './AccountGate';
 import Postcard from './Postcard';
@@ -61,7 +62,6 @@ function App({user,logout,expired}){
   },[file]);
   function chooseFile(selected){
     if(!selected)return;
-    if(selected.size>128*1024*1024){setError('单个附件最大为 128 MB');return}
     setFile(selected);
     setError('');
   }
@@ -90,13 +90,22 @@ function App({user,logout,expired}){
   function attachment(m){
     if(!m.file)return null;
     const url='/media/'+m.file;
-    return m.mime.startsWith('image/')?<button className="thumb" onClick={()=>setPhoto(m)}><img src={url} alt={m.filename} loading="lazy"/></button>:<video src={url} controls playsInline preload="metadata" aria-label={m.filename}/>;
+    if(m.mime.startsWith('image/')){
+      return <button className="thumb" onClick={()=>setPhoto(m)}><img src={url} alt={m.filename} loading="lazy"/></button>;
+    }
+    if(m.mime.startsWith('video/')){
+      return <video src={url} controls playsInline preload="metadata" aria-label={m.filename}/>;
+    }
+    return <a className="file-download" href={url} download={m.filename}>
+      <Download size={18} aria-hidden="true"/><span>{m.filename || '下载附件'}</span>
+    </a>;
   }
   return <div className="page"><header className="mast"><div className="brand"><span className="mark"><Mail size={29}/><Leaf size={18}/></span><div><b>小岛邮局</b><small>ISLAND POST</small></div></div><div className="connection"><HostAddress/><div className="network"><i className={online?'dot':'dot off'}/>{online?'局域网已连接':'正在连接'}</div></div></header>
   <div className="shell">{drawer&&<button className="shade" aria-label="关闭导航" onClick={()=>setDrawer(false)}/>}
   <aside className={drawer?'open':''}><div className="island"><span className="islandIcon">🏝️</span><div><strong>我们的小岛</strong><small>家庭空间</small></div></div>
   <div className="label">邮局导航</div><nav>{tabs.map(([id,title,Icon])=><button key={id} aria-current={id===tab?'page':undefined} className={id===tab?'selected':''} onClick={()=>select(id)}><Icon size={19}/>{title}{id===tab&&<ChevronRight size={15}/>}</button>)}</nav>
   <div className="label people"><Users size={15}/>在线家人 <span>{members.length}</span></div><div className="members">{members.map(m=><div key={m.device}><i className="dot"/><span>{m.name}</span>{m.device===device&&<small>我</small>}</div>)}</div>
+  <a className="back-link password-entry" href="#/password">修改密码</a>
   {user.isAdmin&&<a className="admin-entry" href="#/admin">家庭管理</a>}
   <button className="identity" title="退出当前账号" onClick={()=>logout().catch(()=>setError("退出失败，请重试"))}><span className="deviceIcon"><Monitor size={22}/></span><span><small>当前账号 · 退出登录</small><strong>{name}</strong></span><LogOut size={15}/></button></aside>
   <main><header className="room"><button className="mobile" aria-label="打开导航" onClick={()=>setDrawer(true)}><Menu/></button><span className="roomicon">{React.createElement(current[2],{size:23})}</span><div><h1>{current[1]}</h1><small>{tab==='all'?'家人和设备的共享会话':tab==='image'?'聊天中分享的图片':'聊天中分享的视频'}</small></div>{user.isAdmin ? (
@@ -108,7 +117,7 @@ function App({user,logout,expired}){
   <div className={tab==='all'?'messages':'gallery'}>{items.map(m=><article key={m.id} className={m.device===device?'mine':''}><div className="meta">{m.name} · {formatTime(m.time)}</div><div className="bubble">{attachment(m)}{m.text&&<div>{m.text}</div>}</div></article>)}</div>}</div>
   {error&&<div role="alert" className="error">{error} <button onClick={()=>{setError('');refresh.current()}}>刷新消息</button></div>}
   {tab==='all'&&<form className="compose" onSubmit={send}><fieldset disabled={sending}><legend>撰写消息</legend>{file&&<div className="attachment">{preview&&<img src={preview} alt="待发送的图片预览"/>}{file.name} <button type="button" aria-label="移除附件" onClick={()=>setFile(null)}><X size={14}/></button></div>}<textarea onPaste={pasteImage} aria-label="消息内容" placeholder="写一封小岛来信…" value={draft} maxLength={4000} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&e.nativeEvent.keyCode!==229 && matchMedia('(pointer:fine)').matches){e.preventDefault();send()}}}/>
-  <div className="actions"><button type="button" onClick={()=>attach('image/jpeg,image/png,image/gif,image/webp,image/avif')}><ImagePlus/>图片</button><button type="button" onClick={()=>attach('video/mp4,video/webm,video/quicktime')}><Video/>视频</button><button className="send" disabled={(!draft.trim()&&!file)||sending}>{sending?'寄送中…':'发送'}<Send size={16}/></button></div></fieldset><input type="file" hidden ref={picker} onChange={e=>{chooseFile(e.target.files[0]);e.target.value=''}}/></form>}</main></div>
+  <div className="actions"><button type="button" onClick={()=>attach('image/jpeg,image/png,image/gif,image/webp,image/avif')}><ImagePlus/>图片</button><button type="button" onClick={()=>attach('video/mp4,video/webm,video/quicktime')}><Video/>视频</button><button type="button" onClick={()=>attach('')}><Paperclip/>文件</button><button className="send" disabled={(!draft.trim()&&!file)||sending}>{sending?'寄送中…':'发送'}<Send size={16}/></button></div></fieldset><input type="file" hidden ref={picker} onChange={e=>{chooseFile(e.target.files[0]);e.target.value=''}}/></form>}</main></div>
   {photo&&<dialog ref={dialog} onClose={()=>setPhoto(null)}><button className="close" aria-label="关闭图片" onClick={()=>dialog.current.close()}><X/></button><img className="full" src={'/media/'+photo.file} alt={photo.filename}/></dialog>}
   </div>
 }
@@ -119,6 +128,7 @@ function RoomRouter(props){
     window.addEventListener('hashchange',navigate);
     return ()=>window.removeEventListener('hashchange',navigate);
   },[]);
+  if(path==='#/password')return <ChangePassword expired={props.expired}/>;
   return path==='#/admin'&&props.user.isAdmin?<AdminPage expired={props.expired}/>:<App {...props}/>;
 }
 createRoot(document.getElementById('root')).render(<AccountGate>{(user,logout,expired)=><RoomRouter key={user.id} user={user} logout={logout} expired={expired}/>}</AccountGate>);

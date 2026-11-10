@@ -39,12 +39,16 @@ export function installAuth(app,db,data,onLogout){
   },60000);
   clean.unref();
   app.use('/api/auth',express.json({limit:'3kb'}));
+  function countAttempt(req,res,next){
+    const ip=req.ip,now=Date.now();
+    let entry=attempts.get(ip);
+    if(!entry||entry.until<=now){entry={until:now+600000,count:0};attempts.set(ip,entry)}
+    if(++entry.count>30)return res.status(429).json({error:'尝试过于频繁，请在十分钟后重试'});
+    req.authAttempts=entry;
+    next();
+  }
   function credentials(register){
     return async(req,res)=>{
-      const ip=req.ip,now=Date.now();
-      let entry=attempts.get(ip);
-      if(!entry||entry.until<=now){entry={until:now+600000,count:0};attempts.set(ip,entry)}
-      if(++entry.count>30)return res.status(429).json({error:'尝试过于频繁，请在十分钟后重试'});
       const {username,password,code}=req.body||{};
       const name=typeof username==='string'?username.trim().normalize('NFC'):'';
       if(!name||name.length>32||typeof password!=='string'||password.length>128||!password.length)
@@ -62,18 +66,18 @@ export function installAuth(app,db,data,onLogout){
         user={id:Number(added.lastInsertRowid),name};
       }else{
         const hash=await derive(password,user?.salt || 'unregistered-account',64);
-        if(!user||!timingSafeEqual(hash,Buffer.from(user.hash,'hex')))
+        if(!user||!timingSafeEqual(hash,Buffer.from(user.hash,'hex'))||!db.prepare('SELECT 1 FROM accounts WHERE id=? AND hash=?').get(user.id,user.hash))
           return res.status(401).json({error:'用户名或密码不正确'});
       }
       const token=randomBytes(32).toString('hex');
       db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(digest(token),user.id,Date.now()+lifetime);
       res.cookie('island_session',token,{httpOnly:true,sameSite:'strict',secure:req.secure,maxAge:lifetime,path:'/'});
-      entry.count=Math.max(0,entry.count-1);
+      req.authAttempts.count=Math.max(0,req.authAttempts.count-1);
       res.json({id:user.id,name:user.name,isAdmin:isAdmin(user)});
     }
   }
-  app.post('/api/auth/register',credentials(true));
-  app.post('/api/auth/login',credentials(false));
+  app.post('/api/auth/register',countAttempt,credentials(true));
+  app.post('/api/auth/login',countAttempt,credentials(false));
   app.use(['/api','/media'],(req,res,next)=>{
     res.set('Cache-Control','private, no-store');
     const token=/(?:^|;\s*)island_session=([a-f0-9]{64})(?:;|$)/.exec(req.headers.cookie||'')?.[1];
@@ -86,6 +90,35 @@ export function installAuth(app,db,data,onLogout){
     next();
   });
   app.get('/api/auth/me',(req,res)=>res.json({id:req.account.id,name:req.account.name,isAdmin:req.account.isAdmin}));
+  app.post('/api/auth/password',countAttempt,async(req,res)=>{
+    const {currentPassword,newPassword}=req.body||{};
+    if(typeof currentPassword!=='string'||!currentPassword.length||currentPassword.length>128||
+       typeof newPassword!=='string'||newPassword.length<8||newPassword.length>128)
+      return res.status(400).json({error:'请输入当前密码，新密码长度为 8 至 128 个字符'});
+    const id=req.account.id;
+    const account=db.prepare('SELECT salt,hash FROM accounts WHERE id=?').get(id);
+    const oldHash=await derive(currentPassword,account.salt,64);
+    if(!timingSafeEqual(oldHash,Buffer.from(account.hash,'hex')))
+      return res.status(403).json({error:'当前密码不正确'});
+    if(currentPassword===newPassword)return res.status(400).json({error:'新密码应与当前密码不同'});
+    const salt=randomBytes(16).toString('hex');
+    const hash=await derive(newPassword,salt,64);
+    let revoked;
+    db.exec('BEGIN IMMEDIATE');
+    try{
+      const updated=db.prepare('UPDATE accounts SET salt=?,hash=? WHERE id=? AND hash=? AND EXISTS (SELECT 1 FROM sessions WHERE token=? AND account=? AND expires>?)')
+        .run(salt,hash.toString('hex'),id,account.hash,req.sessionKey,id,Date.now());
+      if(!updated.changes){
+        db.exec('ROLLBACK');
+        return res.status(401).json({error:'请重新登录'});
+      }
+      revoked=db.prepare('DELETE FROM sessions WHERE account=? AND token<>? RETURNING token').all(id,req.sessionKey);
+      db.exec('COMMIT');
+    }catch(err){db.exec('ROLLBACK');throw err}
+    for(const session of revoked)onLogout(session.token);
+    req.authAttempts.count=Math.max(0,req.authAttempts.count-1);
+    res.sendStatus(204);
+  });
   app.use('/api/admin',(req,res,next)=>{
     if(!req.account.isAdmin)return res.status(403).json({error:'需要管理员权限'});
     next();

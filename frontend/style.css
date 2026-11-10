@@ -28,3 +28,10 @@
 }
 .room-admin-button:hover{background:#d8e9cd}
 .room-admin-button:focus-visible{outline:3px solid #83ad9b;outline-offset:2px}
+.password-entry{padding:12px;margin-top:auto}
+.password-entry+.admin-entry,.password-entry+.identity{margin-top:0}
+
+.file-download{display:inline-flex;align-items:center;gap:8px;color:var(--green);max-width:100%}
+.file-download svg{flex:none}
+.file-download span,.attachment{min-width:0;overflow-wrap:anywhere}
+.compose .actions{flex-wrap:wrap}
