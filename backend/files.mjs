@@ -56,7 +56,32 @@ export function installFileManagement(app,db,uploads,notify){
     const page=Number(req.query.page??1);
     if(!Number.isSafeInteger(page)||page<1||page>100000000)return res.status(400).json({error:'无效页码'});
     const stats=summary.get(...req.dates);
-    res.json({...stats,snapshot:snapshot(req.dates,stats),files:listing.all(...req.dates,(page-1)*30)});
+    const total=db.prepare('SELECT count(*) AS count,coalesce(sum(bytes),0) AS bytes FROM messages WHERE file IS NOT NULL').get();
+    res.json({...stats,total,snapshot:snapshot(req.dates,stats),files:listing.all(...req.dates,(page-1)*30)});
+  });
+  function removeIds(ids,res){
+    const placeholders=ids.map(()=>'?').join(',');
+    const where='file IS NOT NULL AND id IN ('+placeholders+')';
+    db.exec('BEGIN IMMEDIATE');
+    let count;
+    try{
+      db.prepare('INSERT OR IGNORE INTO pending_file_removals SELECT file FROM messages WHERE '+where).run(...ids);
+      count=db.prepare("UPDATE messages SET text=CASE WHEN text='' THEN '附件已清理' ELSE text END,file=NULL,mime=NULL,filename=NULL,bytes=NULL WHERE "+where).run(...ids).changes;
+      db.exec('COMMIT');
+    }catch(error){db.exec('ROLLBACK');throw error}
+    notify();
+    res.json({count,pending:drain()});
+  }
+  app.delete('/api/admin/files/:id',(req,res)=>{
+    const id=Number(req.params.id);
+    if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'无效附件编号'});
+    removeIds([id],res);
+  });
+  app.post('/api/admin/files/delete',(req,res)=>{
+    const ids=req.body?.ids;
+    if(!Array.isArray(ids)||ids.length===0||ids.length>300||ids.some(id=>!Number.isSafeInteger(id)||id<1))
+      return res.status(400).json({error:'请选择 1 至 300 个有效附件'});
+    removeIds([...new Set(ids)],res);
   });
   app.post('/api/admin/files/clean',range,(req,res)=>{
     db.exec('BEGIN IMMEDIATE');
