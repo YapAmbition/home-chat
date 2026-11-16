@@ -1,3 +1,5 @@
+import MessageContent from './MessageContent';
+import {MAX_MESSAGE_LENGTH,MESSAGE_TOO_LONG} from '../message-limits.mjs';
 import {checkMessageResponse} from './message-response.mjs';
 import ChangePassword from './ChangePassword';
 import HostAddress from './HostAddress';
@@ -76,6 +78,7 @@ function App({user,logout,expired}){
   async function send(e){
     e?.preventDefault();
     if(sending||(!draft.trim()&&!file))return;
+    if(draft.length>MAX_MESSAGE_LENGTH){setError(MESSAGE_TOO_LONG);return}
     setSending(true);setError('');
     const body=new FormData();body.append('text',draft);
     if(file)body.append('media',file);
@@ -115,9 +118,9 @@ function App({user,logout,expired}){
   <div className="feed" ref={view} onScroll={e=>{const el=e.currentTarget;bottom.current=el.scrollHeight-el.clientHeight-el.scrollTop<65}}>
   {more&&<button className="older" onClick={()=>refresh.current(items[0]?.id)}>查看更早的消息</button>}
   {!items.length?<div className="empty"><figure><Postcard/><figcaption><Mail size={13}/> ISLAND POST OFFICE <span>✦</span></figcaption></figure><h2>{!ready?'正在打开邮局…':tab==='all'?'欢迎来到小岛邮局':tab==='image'?'相册里还没有照片':'影集里还没有视频'}</h2><p>{tab==='all'?'寄出第一条消息，和家里的设备打个招呼吧。':'在家庭聊天室发送'+(tab==='image'?'图片':'视频')+'后，就能在这里找到。'}</p></div>:
-  <div className={tab==='all'?'messages':'gallery'}>{items.map(m=><article key={m.id} className={m.device===device?'mine':''}><div className="meta">{m.name} · {formatTime(m.time)}</div><div className="bubble">{attachment(m)}{m.text&&<div>{m.text}</div>}</div></article>)}</div>}</div>
+  <div className={tab==='all'?'messages':'gallery'}>{items.map(m=><article key={m.id} className={m.device===device?'mine':''}><div className="meta">{m.name} · {formatTime(m.time)}</div><div className="bubble"><MessageContent message={m}>{attachment(m)}</MessageContent></div></article>)}</div>}</div>
   {error&&<div role="alert" className="error">{error} <button onClick={()=>{setError('');refresh.current()}}>刷新消息</button></div>}
-  {tab==='all'&&<form className="compose" onSubmit={send}><fieldset disabled={sending}><legend>撰写消息</legend>{file&&<div className="attachment">{preview&&<img src={preview} alt="待发送的图片预览"/>}{file.name} <button type="button" aria-label="移除附件" onClick={()=>setFile(null)}><X size={14}/></button></div>}<textarea onPaste={pasteImage} aria-label="消息内容" placeholder="写一封小岛来信…" value={draft} maxLength={4000} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&e.nativeEvent.keyCode!==229 && matchMedia('(pointer:fine)').matches){e.preventDefault();send()}}}/>
+  {tab==='all'&&<form className="compose" onSubmit={send}><fieldset disabled={sending}><legend>撰写消息</legend>{file&&<div className="attachment">{preview&&<img src={preview} alt="待发送的图片预览"/>}{file.name} <button type="button" aria-label="移除附件" onClick={()=>setFile(null)}><X size={14}/></button></div>}<textarea onPaste={pasteImage} aria-label="消息内容" placeholder="写一封小岛来信…" value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&e.nativeEvent.keyCode!==229 && matchMedia('(pointer:fine)').matches){e.preventDefault();send()}}}/>
   <div className="actions"><button type="button" onClick={()=>attach('image/jpeg,image/png,image/gif,image/webp,image/avif')}><ImagePlus/>图片</button><button type="button" onClick={()=>attach('video/mp4,video/webm,video/quicktime')}><Video/>视频</button><button type="button" onClick={()=>attach('')}><Paperclip/>文件</button><button className="send" disabled={(!draft.trim()&&!file)||sending}>{sending?'寄送中…':'发送'}<Send size={16}/></button></div></fieldset><input type="file" hidden ref={picker} onChange={e=>{chooseFile(e.target.files[0]);e.target.value=''}}/></form>}</main></div>
   {photo&&<dialog ref={dialog} onClose={()=>setPhoto(null)}><button className="close" aria-label="关闭图片" onClick={()=>dialog.current.close()}><X/></button><img className="full" src={'/media/'+photo.file} alt={photo.filename}/></dialog>}
   </div>

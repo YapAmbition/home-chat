@@ -1,3 +1,4 @@
+import {MAX_MESSAGE_LENGTH,MESSAGE_TOO_LONG} from '../message-limits.mjs';
 import {request} from 'node:http';
 import {frontendPort, backendPort} from '../ports.mjs';
 import {installFileManagement} from './files.mjs';
@@ -70,7 +71,7 @@ app.get('/api/messages',(req,res)=>{
   const rows=db.prepare("SELECT * FROM messages WHERE id < ? AND (? = 'all' OR mime LIKE ?) ORDER BY id DESC LIMIT 80").all(before,kind,kind+'/%');
   res.json(rows.reverse());
 });
-const upload=multer({dest:uploads,limits:{fields:3,files:1,fieldSize:32000}});
+const upload=multer({dest:uploads,limits:{fields:3,files:1,fieldSize:MAX_MESSAGE_LENGTH*4}});
 function mediaType(path){
   const fd=openSync(path,'r'), b=Buffer.alloc(32);
   try{readSync(fd,b,0,b.length,0)}finally{closeSync(fd)}
@@ -93,7 +94,9 @@ app.post('/api/messages',upload.single('media'),(req,res)=>{
     const {text=''}=req.body || {};
     const {id,name}=req.account;
     const mime=req.file ? (mediaType(req.file.path) || 'application/octet-stream') : null;
-    if(typeof text!=='string'||text.length>4000||(!text.trim()&&!req.file)) return res.status(400).json({error:'请检查设备名称或消息内容'});
+    if(typeof text!=='string')return res.status(400).json({error:'消息内容必须是文本'});
+    if(text.length>MAX_MESSAGE_LENGTH)return res.status(400).json({error:MESSAGE_TOO_LONG});
+    if(!text.trim()&&!req.file)return res.status(400).json({error:'请输入消息或选择附件'});
     const result=db.prepare('INSERT INTO messages(device,name,text,file,mime,filename,time,bytes) VALUES(?,?,?,?,?,?,?,?)').run("account:"+id,name,text.trim(),req.file?.filename || null,mime || null,req.file ? Buffer.from(req.file.originalname,'latin1').toString('utf8') : null,Date.now(),req.file?.size??null);
     committed=true;
     signal('message',Number(result.lastInsertRowid));
@@ -112,7 +115,7 @@ app.get('/media/:file',(req,res)=>{
 });
 app.use((err,req,res,next)=>{
   if(res.headersSent) return next(err);
-  res.status(err instanceof multer.MulterError ? 400:500).json({error:err.code==='ENOSPC'?'服务器磁盘空间不足':'操作失败，请重试'});
+  res.status(err instanceof multer.MulterError ? 400:500).json({error:err.code==='LIMIT_FIELD_VALUE'?MESSAGE_TOO_LONG:err.code==='ENOSPC'?'服务器磁盘空间不足':'操作失败，请重试'});
 });
 app.listen(backendPort,'0.0.0.0',error=>{
   if(error) throw error;
